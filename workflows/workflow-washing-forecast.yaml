@@ -1,12 +1,14 @@
 id: 74416d70-e483-4b4c-8b83-caef7e88ab36
 name: washing-forecast
 description: >-
-  Refreshes the washing-drying forecast four times a day (twice in the
-  morning, twice in the afternoon/evening) so a fresh score is always
-  waiting when you check.
+  Fetches and scores today's washing-drying forecast. Not scheduled via a
+  persistent `swamp serve` trigger — the production schedule (twice in the
+  morning, twice in the afternoon/evening) runs through the
+  swamp-workflow-can-i-hang-my-washing-out.timer systemd unit, which starts
+  an ephemeral `swamp serve` per run (see run-via-serve.sh). This workflow
+  definition is for manual runs (`swamp workflow run washing-forecast`)
+  and testing.
 tags: {}
-trigger:
-  schedule: "0 6,9,12,17 * * *"
 jobs:
   - name: main
     description: Fetch and score today's washing-drying forecast

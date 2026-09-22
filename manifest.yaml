@@ -1,6 +1,6 @@
 manifestVersion: 1
 name: "@aaronge/can-i-hang-my-washing-out"
-version: "2026.09.22.1"
+version: "2026.09.22.2"
 description: "Scores whether it's worth hanging your washing out this morning and this afternoon, from free temperature/humidity/wind/rain/sunshine forecast data."
 
 repository: https://github.com/aaron-dernley/can-i-hang-my-washing-out

@@ -397,8 +397,16 @@ export function buildHeadline(
 /** Model definition for the can-i-hang-my-washing-out drying forecast. */
 export const model = {
   type: "@aaronge/can-i-hang-my-washing-out",
-  version: "2026.09.22.1",
+  version: "2026.09.22.2",
   globalArguments: GlobalArgsSchema,
+  upgrades: [
+    {
+      toVersion: "2026.09.22.2",
+      description:
+        "Documentation-only update (README scheduling details); no schema change.",
+      upgradeAttributes: (old: Record<string, unknown>) => old,
+    },
+  ],
   resources: {
     "forecast": {
       description: "Morning/afternoon washing-drying forecast and score",
