@@ -1,0 +1,25 @@
+id: 74416d70-e483-4b4c-8b83-caef7e88ab36
+name: washing-forecast
+description: >-
+  Refreshes the washing-drying forecast four times a day (twice in the
+  morning, twice in the afternoon/evening) so a fresh score is always
+  waiting when you check.
+tags: {}
+trigger:
+  schedule: "0 6,9,12,17 * * *"
+jobs:
+  - name: main
+    description: Fetch and score today's washing-drying forecast
+    steps:
+      - name: forecast
+        description: Fetch the forecast and score morning/afternoon drying conditions
+        task:
+          type: model_method
+          modelIdOrName: washing
+          methodName: forecast
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+    dependsOn: []
+    weight: 0
+version: 1

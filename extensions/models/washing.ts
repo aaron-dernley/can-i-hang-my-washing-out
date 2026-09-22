@@ -457,7 +457,7 @@ export const model = {
           verdict: afternoon.verdict,
         });
 
-        const handle = await context.writeResource("forecast", "latest", {
+        const handle = await context.writeResource("forecast", "today", {
           location,
           generatedAt: new Date().toISOString(),
           headline,
