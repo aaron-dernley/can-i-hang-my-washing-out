@@ -334,6 +334,27 @@ export async function fetchHourlyForecast(
 }
 
 /**
+ * Clamp a scoring window's start hour to "now" when the window is already
+ * partway through — so an elapsed hour's forecast (which may not have
+ * materialized; a 56% rain chance at 06:00 that produced 0.1mm doesn't
+ * mean the 09:00 check run two hours later should still treat that risk
+ * as live) doesn't drag the score down for time that's already passed.
+ * A window that hasn't started yet, or has entirely elapsed, passes
+ * through unchanged — the former should score the full window as
+ * planned; the latter has no "remaining" window to narrow to, and
+ * {@link aggregatePeriod} throws on an empty hour set either way, which
+ * is the honest answer for "how will the morning go" asked at 3pm.
+ */
+export function effectiveStartHour(
+  startHour: number,
+  endHour: number,
+  nowHour: number,
+): number {
+  if (nowHour > startHour && nowHour < endHour) return nowHour;
+  return startHour;
+}
+
+/**
  * Aggregate the hourly forecast into stats for a single window, selecting
  * hours whose local hour-of-day falls in [startHour, endHour).
  */
@@ -370,26 +391,43 @@ export function aggregatePeriod(
   };
 }
 
-/** Build the scored result for one named window. */
+/**
+ * Build the scored result for one named window, scoring only from "now"
+ * onward when the window is already partway through — see
+ * {@link effectiveStartHour}.
+ */
 function scorePeriod(
   label: string,
   hourly: OpenMeteoHourly,
   startHour: number,
   endHour: number,
+  nowHour: number,
 ): PeriodResult {
-  const stats = aggregatePeriod(hourly, startHour, endHour);
+  const stats = aggregatePeriod(
+    hourly,
+    effectiveStartHour(startHour, endHour, nowHour),
+    endHour,
+  );
   const { score, verdict, components } = computeDryingScore(stats);
   return { label, score, verdict, components, stats };
 }
 
-/** Build the one-line "yes mate / no mate" headline from both periods. */
+/**
+ * Build the one-line "yes mate / no mate" headline from both periods.
+ * Both emoji are from Unicode's original 1.1 weather-symbol block (1993)
+ * rather than a newer addition like 🧺 (woven basket, Unicode 11.0,
+ * 2018) specifically because font/renderer support for 1.1-era symbols
+ * is close to universal — a newer emoji silently rendering as nothing on
+ * an older or incomplete font looks like "no image loads for yes mate"
+ * even though the underlying answer and colour are correct.
+ */
 export function buildHeadline(
   morning: PeriodResult,
   afternoon: PeriodResult,
 ): string {
   const best = morning.score >= afternoon.score ? morning : afternoon;
   if (best.score >= 6) {
-    return `Yes mate \u{1F9FA} — best window is the ${best.label.toLowerCase()} (${best.score}/10)`;
+    return `Yes mate ☀️ — best window is the ${best.label.toLowerCase()} (${best.score}/10)`;
   }
   return `No mate ☔ — best you'll get today is the ${best.label.toLowerCase()} at ${best.score}/10`;
 }
@@ -397,13 +435,21 @@ export function buildHeadline(
 /** Model definition for the can-i-hang-my-washing-out drying forecast. */
 export const model = {
   type: "@aaronge/can-i-hang-my-washing-out",
-  version: "2026.09.22.2",
+  version: "2026.10.01.1",
   globalArguments: GlobalArgsSchema,
   upgrades: [
     {
       toVersion: "2026.09.22.2",
       description:
         "Documentation-only update (README scheduling details); no schema change.",
+      upgradeAttributes: (old: Record<string, unknown>) => old,
+    },
+    {
+      toVersion: "2026.10.01.1",
+      description:
+        "Fix: don't let an already-elapsed hour's unmaterialized forecast " +
+        "risk drag down a window's score, and replace the 'yes mate' " +
+        "emoji with a more universally-supported one. No schema change.",
       upgradeAttributes: (old: Record<string, unknown>) => old,
     },
   ],
@@ -421,7 +467,10 @@ export const model = {
         "Fetch today's forecast and score morning/afternoon washing-drying conditions",
       arguments: ForecastArgsSchema,
       execute: async (
-        args: z.infer<typeof ForecastArgsSchema> & { _fetch?: typeof fetch },
+        args: z.infer<typeof ForecastArgsSchema> & {
+          _fetch?: typeof fetch;
+          _nowHour?: number;
+        },
         context: {
           globalArgs: GlobalArgs;
           logger: {
@@ -451,8 +500,9 @@ export const model = {
         );
 
         const hourly = await fetchHourlyForecast(location, fetchImpl);
-        const morning = scorePeriod("Morning", hourly, 6, 12);
-        const afternoon = scorePeriod("Afternoon", hourly, 12, 18);
+        const nowHour = args._nowHour ?? new Date().getHours();
+        const morning = scorePeriod("Morning", hourly, 6, 12, nowHour);
+        const afternoon = scorePeriod("Afternoon", hourly, 12, 18, nowHour);
         const headline = buildHeadline(morning, afternoon);
 
         context.logger.info("{headline}", { headline });

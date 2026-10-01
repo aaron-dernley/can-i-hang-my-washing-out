@@ -31,7 +31,7 @@ Running the method prints the headline and both scores straight to the
 terminal (via the method's log output), e.g.:
 
 ```
-Yes mate 🧺 — best window is the morning (8.1/10)
+Yes mate ☀️ — best window is the morning (8.1/10)
 Morning: 8.1/10 - Great drying day — hang it all out
 Afternoon: 5.4/10 - Marginal — dries slowly, keep an eye on the sky
 ```
@@ -100,6 +100,14 @@ into one overall score. Rain acts as a multiplicative gate rather than a flat
 weighting, since a near-certain downpour can ruin an otherwise perfect drying
 day outright. The result (location, both windows, sub-scores, and the
 headline) is written to the `forecast` resource, versioned on every run.
+
+A window already partway through when the check runs (e.g. the 09:00
+scheduled check, inside the 06:00-12:00 morning window) is scored from
+**now** onward, not from its nominal start — an already-elapsed hour's
+forecast risk that never materialized (a 56% rain chance at 06:00 that
+produced 0.1mm, say) shouldn't still drag down a check run two hours
+later once the sky's actually cleared. A window that hasn't started yet
+is scored in full, as planned.
 
 ## Workflow
 

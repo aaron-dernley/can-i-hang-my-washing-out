@@ -9,6 +9,7 @@ import {
   aggregatePeriod,
   buildHeadline,
   computeDryingScore,
+  effectiveStartHour,
   fetchHourlyForecast,
   model,
   resolveLocation,
@@ -231,6 +232,69 @@ Deno.test("aggregatePeriod: throws when no hours fall in the window", () => {
   assert(threw);
 });
 
+// --- effectiveStartHour ---
+
+Deno.test("effectiveStartHour: clamps to now when now is partway through the window", () => {
+  assertEquals(effectiveStartHour(6, 12, 9), 9);
+});
+
+Deno.test("effectiveStartHour: leaves the window unchanged when it hasn't started yet", () => {
+  assertEquals(effectiveStartHour(6, 12, 3), 6);
+});
+
+Deno.test("effectiveStartHour: leaves the window unchanged when it's already fully elapsed", () => {
+  // No "remaining" window to narrow to -- aggregatePeriod's own empty-set
+  // throw is the honest answer for a window entirely in the past.
+  assertEquals(effectiveStartHour(6, 12, 14), 6);
+});
+
+Deno.test("effectiveStartHour: leaves the window unchanged exactly at its own start or end boundary", () => {
+  assertEquals(effectiveStartHour(6, 12, 6), 6);
+  assertEquals(effectiveStartHour(6, 12, 12), 6);
+});
+
+// --- Regression: elapsed-hour forecast risk shouldn't drag down a later check ---
+//
+// Reproduces the real report: a 09:00 scheduled run's morning score was
+// dragged down by 06:00's forecast 56% rain chance, which never
+// materialized (0.1mm fell) and had already cleared to single digits by
+// 09:00-11:00 -- while the sky was actually clear. Without the
+// effectiveStartHour clamp, aggregatePeriod's own max-precipitation-
+// probability logic lets that one elapsed, stale-risk hour gate the
+// whole 06:00-12:00 window regardless of how the rest of it looks.
+
+Deno.test("regression: a cleared-up elapsed hour's rain forecast no longer gates a 09:00 check", () => {
+  const hours = [6, 7, 8, 9, 10, 11];
+  const hourly = makeHourly({
+    hours,
+    temperature: [13.0, 12.9, 12.6, 12.9, 13.7, 14.9],
+    humidity: [94, 93, 92, 91, 86, 76],
+    // 06:00's 56% never materialized; by 09:00 it's down to single digits.
+    precipProbability: [56, 39, 27, 17, 10, 8],
+    precipitation: [0.1, 0, 0, 0, 0, 0],
+    wind: [10.1, 10.1, 8.3, 7.2, 8.6, 10.1],
+    sunshineSeconds: [0, 0, 2582, 3600, 3600, 3600],
+  });
+
+  const withoutClamp = computeDryingScore(aggregatePeriod(hourly, 6, 12));
+  const withClamp = computeDryingScore(
+    aggregatePeriod(hourly, effectiveStartHour(6, 12, 9), 12),
+  );
+
+  // The old (unclamped) behavior really was this bad -- confirms the
+  // fixture reproduces the reported bug, not just asserts the fix.
+  assert(
+    withoutClamp.score < 6,
+    `expected the unclamped window to reproduce the bug (score < 6), got ${withoutClamp.score}`,
+  );
+  // Checked at 09:00, the clamped (now-09:00-to-12:00) window reflects
+  // the actually-clear morning instead.
+  assert(
+    withClamp.score >= 6,
+    `expected the clamped window to score well (score >= 6), got ${withClamp.score}`,
+  );
+});
+
 // --- buildHeadline ---
 
 Deno.test("buildHeadline: good best score reads 'Yes mate'", () => {
@@ -416,7 +480,9 @@ Deno.test("forecast method: writes a scored forecast resource end to end", async
   });
 
   const result = await model.methods.forecast.execute(
-    { _fetch: stubFetch },
+    // _nowHour: 6 pins "now" to the window's own start, so this test's
+    // result doesn't depend on what time of day the suite happens to run.
+    { _fetch: stubFetch, _nowHour: 6 },
     context as never,
   );
 
@@ -445,7 +511,7 @@ Deno.test("forecast method: uses a run-argument override in preference to global
   });
 
   await model.methods.forecast.execute(
-    { latitude: 40.7, longitude: -74, _fetch: stubFetch },
+    { latitude: 40.7, longitude: -74, _fetch: stubFetch, _nowHour: 6 },
     context as never,
   );
 
