@@ -6,9 +6,9 @@ description: >-
   scheduled by `swamp serve` through trigger.schedule — four times a day,
   06:00 and 09:00 across the morning window, 12:00 and 17:00 across the
   afternoon/evening window. One forecast pass scores both windows, so the
-  four firings just keep the data fresh. The export job used to be the
-  tail of run-via-serve.sh (now legacy); it only depends on the forecast
-  job completing, so a failed fetch still rewrites the file from the last
+  four firings just keep the data fresh. The export job replaces the
+  tail of the old run-via-serve.sh wrapper (removed 2026-11-05); it only
+  depends on the forecast job completing, so a failed fetch still rewrites the file from the last
   good `today` data rather than leaving the panel stale.
 tags: {}
 trigger:
