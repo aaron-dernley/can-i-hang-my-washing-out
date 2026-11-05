@@ -1,14 +1,18 @@
 id: 74416d70-e483-4b4c-8b83-caef7e88ab36
-name: washing-forecast
+name: "@aaronge/washing-forecast"
 description: >-
-  Fetches and scores today's washing-drying forecast. Not scheduled via a
-  persistent `swamp serve` trigger — the production schedule (twice in the
-  morning, twice in the afternoon/evening) runs through the
-  swamp-workflow-can-i-hang-my-washing-out.timer systemd unit, which starts
-  an ephemeral `swamp serve` per run (see run-via-serve.sh). This workflow
-  definition is for manual runs (`swamp workflow run washing-forecast`)
-  and testing.
+  Fetches and scores today's washing-drying forecast, then exports the
+  scores as a Prometheus textfile metric. Ships in the package and is
+  scheduled by `swamp serve` through trigger.schedule — four times a day,
+  06:00 and 09:00 across the morning window, 12:00 and 17:00 across the
+  afternoon/evening window. One forecast pass scores both windows, so the
+  four firings just keep the data fresh. The export job used to be the
+  tail of run-via-serve.sh (now legacy); it only depends on the forecast
+  job completing, so a failed fetch still rewrites the file from the last
+  good `today` data rather than leaving the panel stale.
 tags: {}
+trigger:
+  schedule: "0 6,9,12,17 * * *"
 jobs:
   - name: main
     description: Fetch and score today's washing-drying forecast
@@ -23,5 +27,45 @@ jobs:
         weight: 0
         allowFailure: false
     dependsOn: []
+    weight: 0
+  - name: export
+    description: >-
+      Write /var/lib/prometheus/node-exporter/can-i-hang-my-washing-out.prom
+      for the fun-stuff Grafana dashboard. Written atomically (tmp file +
+      mv) since node_exporter may be scraping the textfile directory
+      concurrently. The best period and the 1/0 answer (best score >= 6)
+      are computed in CEL, so the shell only prints.
+    dependsOn:
+      - job: main
+        condition:
+          type: completed
+    steps:
+      - name: writeTextfile
+        task:
+          type: model_method
+          modelType: "command/shell"
+          modelName: washing-textfile-writer
+          methodName: execute
+          inputs:
+            run: |
+              set -eu
+              DEST_DIR=/var/lib/prometheus/node-exporter
+              TMP=$(mktemp "$DEST_DIR/.can-i-hang-my-washing-out.prom.XXXXXX")
+              trap 'rm -f "$TMP"' EXIT
+              {
+                echo "# HELP can_i_hang_my_washing_out_score Washing-drying score out of 10 for a given period (morning 06:00-12:00, afternoon 12:00-18:00)."
+                echo "# TYPE can_i_hang_my_washing_out_score gauge"
+                echo "can_i_hang_my_washing_out_score{period=\"morning\"} ${{ data.latest('washing','today').attributes.morning.score }}"
+                echo "can_i_hang_my_washing_out_score{period=\"afternoon\"} ${{ data.latest('washing','today').attributes.afternoon.score }}"
+                echo "# HELP can_i_hang_my_washing_out_answer 1 if the best of morning/afternoon scores at least 6/10 (worth hanging washing out today), else 0. Labeled with which period is best."
+                echo "# TYPE can_i_hang_my_washing_out_answer gauge"
+                echo "can_i_hang_my_washing_out_answer{best_period=\"${{ data.latest('washing','today').attributes.afternoon.score >= data.latest('washing','today').attributes.morning.score ? 'afternoon' : 'morning' }}\"} ${{ (data.latest('washing','today').attributes.afternoon.score >= 6.0 || data.latest('washing','today').attributes.morning.score >= 6.0) ? 1 : 0 }}"
+              } > "$TMP"
+              chmod 644 "$TMP"
+              mv "$TMP" "$DEST_DIR/can-i-hang-my-washing-out.prom"
+              trap - EXIT
+        dependsOn: []
+        weight: 0
+        allowFailure: false
     weight: 0
 version: 1

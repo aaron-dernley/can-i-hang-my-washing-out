@@ -111,36 +111,35 @@ is scored in full, as planned.
 
 ## Workflow
 
-Scheduled to run four times a day — **06:00 and 09:00** across the morning
-window, **12:00 and 17:00** across the afternoon/evening window — via a
-`systemd` timer, not a persistent `swamp serve` process. Each firing runs
-`run-via-serve.sh`, which:
+The `@aaronge/washing-forecast` workflow ships in the package, so
+`swamp extension pull @aaronge/can-i-hang-my-washing-out` brings it along.
+It carries its own `trigger.schedule` (`0 6,9,12,17 * * *`), so a running
+`swamp serve` fires it four times a day — **06:00 and 09:00** across the
+morning window, **12:00 and 17:00** across the afternoon/evening window.
+Each run:
 
-1. Starts a throwaway `swamp serve` bound to `127.0.0.1:9095` (`--no-schedule
-   --no-telemetry`), avoiding the idle memory cost of a long-running daemon.
-2. Runs `swamp model method run washing forecast` through it — one pass
-   scores both windows, so four firings a day just keep the data fresh
-   rather than needing four separate model definitions.
-3. Exports the scores as a Prometheus textfile metric
+1. Runs `washing.forecast` — one pass scores both windows, so four firings
+   a day just keep the data fresh rather than needing four separate model
+   definitions.
+2. Exports the scores as a Prometheus textfile metric
    (`/var/lib/prometheus/node-exporter/can-i-hang-my-washing-out.prom`),
-   written atomically (tmp file + `mv`).
-4. Tears the serve instance back down.
+   written atomically (tmp file + `mv`). This job runs even if the fetch
+   fails, rewriting the file from the last good `today` data.
 
-Like its sibling `fun-stuff` extensions, the two systemd unit files aren't
-checked into this repo — they're host config, created directly on the
-machine that runs the schedule:
+The consuming repo needs a `washing` model instance:
 
-- `swamp-workflow-can-i-hang-my-washing-out.service` — a `oneshot` running
-  `run-via-serve.sh` as the owning user.
-- `swamp-workflow-can-i-hang-my-washing-out.timer` — `OnCalendar=*-*-*
-  06,09,12,17:00:00`, `Persistent=true`, `WantedBy=timers.target`.
+```bash
+swamp model create @aaronge/can-i-hang-my-washing-out washing
+swamp workflow run @aaronge/washing-forecast   # one manual run
+```
 
-`sudo systemctl enable --now swamp-workflow-can-i-hang-my-washing-out.timer`
-after creating both.
+To change the cadence without editing the package, override the trigger
+in the consuming repo: `swamp workflow trigger set @aaronge/washing-forecast
+--schedule "0 7,13 * * *"`.
 
-The `workflows/washing-forecast.yaml` workflow definition itself isn't
-scheduled — it's there for manual runs (`swamp workflow run
-washing-forecast`) and testing.
+`run-via-serve.sh` is legacy: it predates the shipped workflow and ran the
+same two steps from a systemd timer through a throwaway `swamp serve`. It's
+kept for reference only.
 
 If node_exporter's textfile collector and Prometheus are already scraping
 this host (as for this project's own `fun-stuff` dashboard — see

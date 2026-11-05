@@ -12,7 +12,7 @@ INSTANCE=washing
 METHOD=forecast
 
 cd "$REPO_DIR"
-swamp serve --repo-dir "$REPO_DIR" --port "$PORT" --host 127.0.0.1 --no-schedule --no-telemetry \
+swamp serve --repo-dir "$REPO_DIR" --port "$PORT" --host 127.0.0.1 --no-schedule \
   >/tmp/can-i-hang-my-washing-out-serve.log 2>&1 &
 SERVE_PID=$!
 trap 'kill "$SERVE_PID" 2>/dev/null || true' EXIT
