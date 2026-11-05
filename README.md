@@ -137,9 +137,9 @@ To change the cadence without editing the package, override the trigger
 in the consuming repo: `swamp workflow trigger set @aaronge/washing-forecast
 --schedule "0 7,13 * * *"`.
 
-`run-via-serve.sh` is legacy: it predates the shipped workflow and ran the
-same two steps from a systemd timer through a throwaway `swamp serve`. It's
-kept for reference only.
+The old `run-via-serve.sh` wrapper, which ran the same two steps from a
+systemd timer through a throwaway `swamp serve`, was removed on 2026-11-05.
+The shipped workflow replaces it.
 
 If node_exporter's textfile collector and Prometheus are already scraping
 this host (as for this project's own `fun-stuff` dashboard — see
